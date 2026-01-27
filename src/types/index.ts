@@ -14,6 +14,20 @@ export interface Candidate {
   analysis_error?: string;
   name: string;
   ai_analysis?: AnalysisResponse;
+
+  // Pipeline tracking (Phase 1)
+  temp_name?: string;
+  source_type?: string;
+  pipeline_step?: 'url_saved' | 'name_derived' | 'url_resolved' | 'analysis_running' | 'complete' | 'failed';
+
+  // URL resolution (Phase 2)
+  resolved_url?: string;
+  pdf_storage_path?: string;
+
+  // Recruiter-set fields
+  candidate_number?: number;
+  degree_type?: 'bachelors' | 'masters' | 'phd';
+  job_type?: 'internship' | 'full_time';
 }
 
 // Structured response from Gemini AI analysis
