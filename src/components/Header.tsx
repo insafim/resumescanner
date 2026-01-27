@@ -9,7 +9,7 @@ interface HeaderProps {
 
 const Header: React.FC<HeaderProps> = ({ view, onBack }) => {
   return (
-    <header className="bg-white border-b border-slate-200 sticky top-0 z-20 px-4 py-5 flex items-center justify-between">
+    <header className="bg-white border-b border-slate-200 fixed top-0 left-0 right-0 z-20 max-w-md mx-auto px-4 py-5 flex items-center justify-between">
       {view === ViewState.DASHBOARD ? (
         <div>
           <h1 className="text-xl font-bold text-slate-900 tracking-tight">ResumeScanner</h1>
