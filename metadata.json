@@ -1,0 +1,9 @@
+{
+  "name": "ResumeScanner Pro",
+  "description": "A mobile-first tool to scan resume QR codes, analyze content via Gemini AI, and perform rapid Go/No-Go triage.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone",
+    "geolocation"
+  ]
+}
