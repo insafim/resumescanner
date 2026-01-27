@@ -1,8 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Candidate } from '../types';
-import { analyzeResumeContent, type PdfContext } from '../services/aiService';
+import { analyzeResumeContent, type ResolvedPdfContext } from '../services/aiService';
 import { resolveUrl } from '../services/resolveUrlService';
-import { downloadStoredPdf } from '../utils/downloadStoredPdf';
 import {
   getCandidates,
   saveCandidate,
@@ -65,16 +64,27 @@ export function useCandidates() {
     try {
       // Step 1: Resolve URL redirects (non-blocking — falls back to original URL on failure)
       let contentUrl = candidate.qr_content;
-      let storagePath: string | undefined;
+      let resolvedPdfContext: ResolvedPdfContext | undefined;
       if (candidate.qr_content.startsWith('http')) {
         try {
           await updatePipelineStep(candidate.id, 'url_saved');
-          const resolved = await resolveUrl(candidate.qr_content, candidate.id);
+          const resolved = await resolveUrl(candidate.qr_content);
+          console.info('[useCandidates] Resolve result:', resolved);
           if (resolved && resolved.finalUrl && !resolved.error) {
             contentUrl = resolved.finalUrl;
-            storagePath = resolved.storagePath ?? undefined;
-            await updateResolvedUrl(candidate.id, resolved.finalUrl, resolved.storagePath);
-            onUpdate({ ...candidate, resolved_url: resolved.finalUrl, pdf_storage_path: storagePath, pipeline_step: 'url_resolved' });
+            await updateResolvedUrl(candidate.id, resolved.finalUrl);
+            onUpdate({ ...candidate, resolved_url: resolved.finalUrl, pipeline_step: 'url_resolved' });
+
+            // If the resolved URL is a PDF, Gemini will fetch it directly via createPartFromUri
+            if (resolved.isPdf) {
+              resolvedPdfContext = {
+                resolvedPdfUrl: resolved.finalUrl,
+                originalUrl: candidate.qr_content,
+              };
+              console.info('[useCandidates] Resolved to PDF URL, will use createPartFromUri');
+            }
+          } else {
+            console.warn('[useCandidates] URL resolution returned no usable result, using original URL');
           }
         } catch (resolveErr) {
           // Non-fatal: log and continue with original URL
@@ -82,23 +92,10 @@ export function useCandidates() {
         }
       }
 
-      // Step 2: If a stored PDF exists, download it for direct AI analysis
-      let pdfContext: PdfContext | undefined;
-      if (storagePath) {
-        try {
-          const pdfResult = await downloadStoredPdf(storagePath);
-          if (pdfResult) {
-            pdfContext = { pdfBase64: pdfResult.base64, originalUrl: candidate.qr_content };
-          }
-        } catch (downloadErr) {
-          // Non-fatal: fall back to URL-based analysis
-          console.warn('[useCandidates] PDF download from storage failed, falling back to URL:', downloadErr);
-        }
-      }
-
-      // Step 3: Run AI analysis (using stored PDF if available, otherwise URL)
+      // Step 2: Run AI analysis
+      // Priority: resolved PDF URL → URL-based analysis with googleSearch
       await updatePipelineStep(candidate.id, 'analysis_running');
-      const analysis = await analyzeResumeContent(contentUrl, pdfContext);
+      const analysis = await analyzeResumeContent(contentUrl, undefined, resolvedPdfContext);
       const updated = await updateAnalysis(candidate.id, analysis);
       onUpdate(updated);
       await loadCandidates();

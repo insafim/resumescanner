@@ -145,14 +145,12 @@ export const markAnalysisFailed = async (id: string, errorMsg: string): Promise<
 // Persist URL resolution results (Phase 2: after Edge Function resolves redirects)
 export const updateResolvedUrl = async (
   id: string,
-  resolvedUrl: string,
-  pdfStoragePath: string | null
+  resolvedUrl: string
 ): Promise<void> => {
   await supabase
     .from('candidates')
     .update({
       resolved_url: resolvedUrl,
-      pdf_storage_path: pdfStoragePath,
       pipeline_step: 'url_resolved',
       updated_at: new Date().toISOString(),
     })

@@ -7,22 +7,21 @@ export interface ResolveUrlResult {
   redirectChain: string[];
   contentType: string | null;
   isPdf: boolean;
-  storagePath: string | null;
   error: string | null;
 }
 
 /**
  * Resolves a short/redirect URL to its final destination via Supabase Edge Function.
- * If the final URL points to a PDF, the Edge Function downloads and stores it
- * in the `MBZUAI-CVs` storage bucket.
+ * The Edge Function follows HTTP 3xx redirects and HTML meta-refresh/JS redirects,
+ * returning the final URL. If it's a PDF, Gemini can fetch it via createPartFromUri.
  *
  * Returns null if the Edge Function is unavailable or the call fails — the caller
  * should fall back to using the original URL.
  */
-export async function resolveUrl(url: string, candidateId: string): Promise<ResolveUrlResult | null> {
+export async function resolveUrl(url: string): Promise<ResolveUrlResult | null> {
   try {
     const { data, error } = await supabase.functions.invoke('resolve-url', {
-      body: { url, candidateId },
+      body: { url },
     });
 
     if (error) {
@@ -30,6 +29,7 @@ export async function resolveUrl(url: string, candidateId: string): Promise<Reso
       return null;
     }
 
+    console.info('[resolveUrlService] Result:', JSON.stringify(data));
     return data as ResolveUrlResult;
   } catch (err) {
     console.warn('[resolveUrlService] Failed to invoke Edge Function:', err);

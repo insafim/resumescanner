@@ -174,3 +174,54 @@ Return the response as JSON.`;
 
   return data;
 };
+
+// Analyze a PDF at a resolved URL by letting Gemini fetch it via createPartFromUri.
+// Used when the Edge Function resolves a redirect chain to a direct PDF URL (e.g. S3 pre-signed).
+// Source: @google/genai createPartFromUri(url, mimeType) - Verified: 2026-01-27
+export const analyzeResolvedPdf = async (
+  pdfUrl: string,
+  originalUrl: string
+): Promise<AnalysisResponse> => {
+  const pdfPart = createPartFromUri(pdfUrl, "application/pdf");
+
+  const prompt = `You are a recruiter's assistant at a university career fair.
+This PDF is a candidate's resume. Extract structured information for a recruiter to quickly evaluate.
+Leave fields blank (empty string or empty array) if not found — do NOT fabricate information.
+
+Required fields:
+- name: Full name (use "Unknown Candidate" only if truly not findable)
+- summary: 2-3 sentence professional summary oriented toward a recruiter
+- keyPoints: Array of the most notable skills, achievements, or qualifications (max 8)
+- urls: Array of relevant profile/project URLs found in the resume
+
+Optional fields (fill if available):
+- educationLevel, educationField, educationUniversity, educationDetails
+- experienceSummary, yearsOfExperience
+- previousRoles: Array of {title, company, duration}
+- technicalSkills: Array of specific technologies, languages, or tools
+- projects: Array of {name, description, url}
+- overallAssessment: 2-3 sentence recruiter-oriented evaluation
+- sourceType: "pdf"
+
+Return the response as JSON.`;
+
+  const response = await ai.models.generateContent({
+    model: AI_MODELS.GEMINI,
+    contents: [pdfPart, prompt],
+    config: {
+      responseMimeType: "application/json",
+      responseSchema: analysisResponseSchema,
+    },
+  });
+
+  const text = response.text || "{}";
+  const data = JSON.parse(text) as AnalysisResponse;
+
+  if (!data.sourceType) data.sourceType = "pdf";
+  if (!data.urls) data.urls = [];
+  if (originalUrl && !data.urls.includes(originalUrl)) {
+    data.urls.push(originalUrl);
+  }
+
+  return data;
+};

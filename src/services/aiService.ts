@@ -2,18 +2,27 @@
 // Default: "gemini" (preserves existing behavior).
 // Set AI_PROVIDER=groq in .env.local to use Groq.
 //
-// Special case: Google Drive PDFs always route to Gemini, which can read
-// PDFs natively via createPartFromUri (Groq cannot access Drive content).
+// Special cases:
+// - Google Drive PDFs always route to Gemini via createPartFromUri.
+// - Resolved PDF URLs (from Edge Function redirect resolution) route to Gemini
+//   via createPartFromUri — Gemini fetches the PDF server-side, no storage needed.
+// - Groq cannot access Drive content or ingest PDFs natively.
 //
 // Retry: All calls are wrapped with exponential backoff (3 attempts) to
 // handle transient 503/429 errors from model providers.
 import { AnalysisResponse } from '../types';
-import { analyzeResumeContent as geminiAnalyze, analyzeGoogleDrivePdf, analyzeStoredPdf } from './geminiService';
+import { analyzeResumeContent as geminiAnalyze, analyzeGoogleDrivePdf, analyzeStoredPdf, analyzeResolvedPdf } from './geminiService';
 import { analyzeResumeContent as groqAnalyze } from './groqService';
 
 /** Context for a PDF already stored in Supabase Storage. */
 export interface PdfContext {
   pdfBase64: string;
+  originalUrl: string;
+}
+
+/** Context for a resolved PDF URL (Edge Function resolved redirects to a direct PDF link). */
+export interface ResolvedPdfContext {
+  resolvedPdfUrl: string;
   originalUrl: string;
 }
 
@@ -81,17 +90,29 @@ const isGoogleDriveUrl = (content: string): boolean =>
 
 export const analyzeResumeContent = async (
   qrContent: string,
-  pdfContext?: PdfContext
+  pdfContext?: PdfContext,
+  resolvedPdfContext?: ResolvedPdfContext
 ): Promise<AnalysisResponse> => {
   // Google Drive PDFs → always Gemini (can read PDFs natively via createPartFromUri)
   if (isGoogleDriveUrl(qrContent)) {
     return withRetry(() => withTimeout(analyzeGoogleDrivePdf(qrContent), REQUEST_TIMEOUT_MS));
   }
 
+  // Resolved PDF URL available → Gemini fetches the PDF directly via createPartFromUri
+  // (e.g. Edge Function resolved Symplicity QR → S3 pre-signed URL)
+  if (resolvedPdfContext) {
+    if (provider === 'groq') {
+      console.info('[aiService] Resolved PDF URL available but Groq cannot ingest PDFs. Using URL-based analysis.');
+    } else {
+      return withRetry(() =>
+        withTimeout(analyzeResolvedPdf(resolvedPdfContext.resolvedPdfUrl, resolvedPdfContext.originalUrl), REQUEST_TIMEOUT_MS)
+      );
+    }
+  }
+
   // Stored PDF available → pass directly to Gemini via base64 (skips URL re-fetch)
   if (pdfContext) {
     if (provider === 'groq') {
-      // Groq cannot ingest PDFs natively; fall through to URL-based analysis.
       console.info('[aiService] Stored PDF available but Groq cannot ingest PDFs. Using URL-based analysis.');
     } else {
       return withRetry(() =>
