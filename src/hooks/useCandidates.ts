@@ -87,7 +87,7 @@ export function useCandidates() {
 
               // Fire-and-forget Google Drive upload — runs in parallel with AI analysis.
               // Intentionally NOT awaited so it never blocks the analysis pipeline.
-              uploadPdfToDrive(resolved.finalUrl, candidate.name || candidate.temp_name || 'Unknown', candidate.id)
+              uploadPdfToDrive(resolved.finalUrl, candidate.name || candidate.temp_name || 'Unknown', candidate.id, candidate.candidate_number ?? 0)
                 .then(async (result) => {
                   if (result?.webViewLink) {
                     console.info('[useCandidates] Drive upload complete:', result.webViewLink);

@@ -20,10 +20,11 @@ export async function uploadPdfToDrive(
   resolvedUrl: string,
   candidateName: string,
   candidateId: string,
+  candidateNumber: number,
 ): Promise<DriveUploadResult | null> {
   try {
     const { data, error } = await supabase.functions.invoke('upload-to-drive', {
-      body: { resolvedUrl, candidateName, candidateId },
+      body: { resolvedUrl, candidateName, candidateId, candidateNumber },
     });
 
     if (error) {

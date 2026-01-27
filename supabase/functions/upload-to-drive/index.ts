@@ -148,8 +148,8 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { resolvedUrl, candidateName, candidateId } = await req.json();
-    console.log('[upload-to-drive] Request:', { resolvedUrl, candidateName, candidateId });
+    const { resolvedUrl, candidateName, candidateId, candidateNumber } = await req.json();
+    console.log('[upload-to-drive] Request:', { resolvedUrl, candidateName, candidateId, candidateNumber });
 
     if (!resolvedUrl || typeof resolvedUrl !== 'string') {
       return new Response(
@@ -188,12 +188,8 @@ Deno.serve(async (req) => {
     console.log(`[upload-to-drive] Downloaded ${pdfBytes.byteLength} bytes`);
 
     // 3. Upload to Google Drive
-    const safeName = (candidateName || 'Unknown')
-      .replace(/[^a-zA-Z0-9_\- ]/g, '_')
-      .slice(0, 80);
-    const timestamp = new Date().toISOString().slice(0, 10);
-    const shortId = (candidateId || 'unknown').slice(0, 8);
-    const filename = `${safeName}_${timestamp}_${shortId}.pdf`;
+    const padded = String(candidateNumber ?? 0).padStart(3, '0');
+    const filename = `MBZUAI_Candidate_${padded}.pdf`;
 
     console.log('[upload-to-drive] Uploading to Drive as:', filename);
     const { fileId, webViewLink } = await uploadToDrive(
