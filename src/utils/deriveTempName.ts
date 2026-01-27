@@ -53,6 +53,11 @@ export function deriveTempName(content: string): string {
     return 'Google Drive PDF';
   }
 
+  // Symplicity career services: QR codes contain only hashes, no useful name
+  if (hostname.includes('symplicity.com')) {
+    return 'Career Fair CV';
+  }
+
   // PDF URL: extract filename without extension
   if (url.pathname.toLowerCase().endsWith('.pdf')) {
     const segments = cleanPathSegments(url.pathname);
