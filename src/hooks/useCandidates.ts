@@ -87,17 +87,20 @@ export function useCandidates() {
 
               // Fire-and-forget Google Drive upload — runs in parallel with AI analysis.
               // Intentionally NOT awaited so it never blocks the analysis pipeline.
-              uploadPdfToDrive(resolved.finalUrl, candidate.name || candidate.temp_name || 'Unknown', candidate.id, candidate.candidate_number ?? 0)
-                .then(async (result) => {
-                  if (result?.webViewLink) {
-                    console.info('[useCandidates] Drive upload complete:', result.webViewLink);
-                    await updateDriveLink(candidate.id, result.webViewLink);
-                    loadCandidates();
-                  }
-                })
-                .catch((err) => {
-                  console.warn('[useCandidates] Drive upload failed (non-blocking):', err);
-                });
+              // Skip if already uploaded (prevents duplicates on analysis retry).
+              if (!candidate.pdf_storage_path) {
+                uploadPdfToDrive(resolved.finalUrl, candidate.name || candidate.temp_name || 'Unknown', candidate.id, candidate.candidate_number ?? 0)
+                  .then(async (result) => {
+                    if (result?.webViewLink) {
+                      console.info('[useCandidates] Drive upload complete:', result.webViewLink);
+                      await updateDriveLink(candidate.id, result.webViewLink);
+                      loadCandidates();
+                    }
+                  })
+                  .catch((err) => {
+                    console.warn('[useCandidates] Drive upload failed (non-blocking):', err);
+                  });
+              }
             }
           } else {
             console.warn('[useCandidates] URL resolution returned no usable result, using original URL');
