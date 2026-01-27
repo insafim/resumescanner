@@ -14,10 +14,20 @@ import { detectSourceType, sourceHints } from '../utils/detectSource';
 import { openaiAnalysisSchema } from '../constants/openaiSchema';
 import { AI_MODELS } from '../constants';
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-  dangerouslyAllowBrowser: true, // Required: app runs in browser (same pattern as Groq SDK)
-});
+// Lazy-initialized: the OpenAI SDK throws at construction time if the API key
+// is undefined. Since aiService.ts statically imports this module regardless of
+// which provider is active, a top-level `new OpenAI()` would crash the app on
+// any deployment that hasn't configured OPENAI_API_KEY (e.g. Vercel with Gemini).
+let _openai: OpenAI | null = null;
+function getOpenAI(): OpenAI {
+  if (!_openai) {
+    _openai = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+      dangerouslyAllowBrowser: true,
+    });
+  }
+  return _openai;
+}
 
 // Structured output config reused across all analysis functions.
 // Source: OpenAI Structured Outputs guide
@@ -75,7 +85,7 @@ Return the response as JSON.
   // Responses API with web_search_preview — analogous to Gemini's googleSearch tool.
   // Source: https://platform.openai.com/docs/guides/tools-web-search
   // Verified: 2026-01-28
-  const response = await openai.responses.create({
+  const response = await getOpenAI().responses.create({
     model: AI_MODELS.OPENAI,
     tools: [{ type: "web_search_preview" }],
     input: prompt,
@@ -129,7 +139,7 @@ Optional fields (fill if available):
 
 Return the response as JSON.`;
 
-  const response = await openai.responses.create({
+  const response = await getOpenAI().responses.create({
     model: AI_MODELS.OPENAI,
     input: [
       {
@@ -183,7 +193,7 @@ Optional fields (fill if available):
 
 Return the response as JSON.`;
 
-  const response = await openai.responses.create({
+  const response = await getOpenAI().responses.create({
     model: AI_MODELS.OPENAI,
     input: [
       {
@@ -243,7 +253,7 @@ Optional fields (fill if available):
 
 Return the response as JSON.`;
 
-  const response = await openai.responses.create({
+  const response = await getOpenAI().responses.create({
     model: AI_MODELS.OPENAI,
     input: [
       {
