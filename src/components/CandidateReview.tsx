@@ -115,7 +115,7 @@ const CandidateReview: React.FC<CandidateReviewProps> = ({
       </div>
 
       {/* Spacer for bottom sticky bar */}
-      <div className="h-28"></div>
+      <div className="h-24"></div>
     </div>
   );
 };

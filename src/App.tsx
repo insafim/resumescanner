@@ -106,7 +106,7 @@ const App: React.FC = () => {
   return (
     <div className="h-screen h-dvh bg-slate-50 pb-20 max-w-md mx-auto relative shadow-2xl overflow-y-auto overflow-x-hidden">
       <Header view={view} onBack={handleBack} />
-      <div className="h-16" />
+      <div className="h-12" />
 
       <main className="p-4">
         {view === ViewState.DASHBOARD && (
