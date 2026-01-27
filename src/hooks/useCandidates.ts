@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Candidate } from '../types';
 import { analyzeResumeContent, type ResolvedPdfContext } from '../services/aiService';
 import { resolveUrl } from '../services/resolveUrlService';
+import { uploadPdfToDrive } from '../services/driveUploadService';
 import {
   getCandidates,
   saveCandidate,
@@ -10,6 +11,7 @@ import {
   markAnalysisFailed,
   updatePipelineStep,
   updateResolvedUrl,
+  updateDriveLink,
   deleteCandidate,
 } from '../services/storageService';
 
@@ -82,6 +84,20 @@ export function useCandidates() {
                 originalUrl: candidate.qr_content,
               };
               console.info('[useCandidates] Resolved to PDF URL, will use createPartFromUri');
+
+              // Fire-and-forget Google Drive upload — runs in parallel with AI analysis.
+              // Intentionally NOT awaited so it never blocks the analysis pipeline.
+              uploadPdfToDrive(resolved.finalUrl, candidate.name || candidate.temp_name || 'Unknown', candidate.id)
+                .then(async (result) => {
+                  if (result?.webViewLink) {
+                    console.info('[useCandidates] Drive upload complete:', result.webViewLink);
+                    await updateDriveLink(candidate.id, result.webViewLink);
+                    loadCandidates();
+                  }
+                })
+                .catch((err) => {
+                  console.warn('[useCandidates] Drive upload failed (non-blocking):', err);
+                });
             }
           } else {
             console.warn('[useCandidates] URL resolution returned no usable result, using original URL');

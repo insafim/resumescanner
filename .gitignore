@@ -17,6 +17,9 @@ dist-ssr
 .env.local
 .env.*.local
 
+# Google service account keys (NEVER commit these)
+gen-lang-client-*.json
+
 # Claude
 .claude/
 

@@ -171,6 +171,21 @@ export const updatePipelineStep = async (
     .eq('id', id);
 };
 
+// Persist Google Drive web view link after the upload-to-drive Edge Function succeeds.
+// Reuses the existing pdf_storage_path column (no DB migration needed).
+export const updateDriveLink = async (
+  id: string,
+  webViewLink: string
+): Promise<void> => {
+  await supabase
+    .from('candidates')
+    .update({
+      pdf_storage_path: webViewLink,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', id);
+};
+
 export const deleteCandidate = async (id: string): Promise<void> => {
   const { error } = await supabase
     .from('candidates')

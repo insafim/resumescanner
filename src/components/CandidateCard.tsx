@@ -34,6 +34,12 @@ const CandidateCard: React.FC<CandidateCardProps> = ({ candidate }) => {
               <span className="truncate">{candidate.resolved_url}</span>
             </a>
           )}
+          {candidate.pdf_storage_path && (
+            <a href={candidate.pdf_storage_path} target="_blank" rel="noreferrer" className="flex items-center text-xs text-green-600 hover:underline truncate mt-2">
+              <ExternalLink size={12} className="mr-1.5 shrink-0" />
+              <span className="truncate">View on Google Drive</span>
+            </a>
+          )}
         </div>
       )}
 
