@@ -20,4 +20,5 @@ export const AI_MODELS = {
   GEMINI: 'gemini-3-flash-preview',
   GROQ_COMPOUND: 'groq/compound',
   GROQ_STRUCTURED: 'llama-3.3-70b-versatile',
+  OPENAI: 'gpt-5.2',
 } as const;

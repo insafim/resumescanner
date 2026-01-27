@@ -1,18 +1,27 @@
-// AI provider adapter - switches between Gemini and Groq based on AI_PROVIDER env var.
+// AI provider adapter - switches between Gemini, Groq, and OpenAI based on AI_PROVIDER env var.
 // Default: "gemini" (preserves existing behavior).
 // Set AI_PROVIDER=groq in .env.local to use Groq.
+// Set AI_PROVIDER=openai in .env.local to use OpenAI.
 //
 // Special cases:
-// - Google Drive PDFs always route to Gemini via createPartFromUri.
-// - Resolved PDF URLs (from Edge Function redirect resolution) route to Gemini
-//   via createPartFromUri — Gemini fetches the PDF server-side, no storage needed.
-// - Groq cannot access Drive content or ingest PDFs natively.
+// - Google Drive PDFs route to Gemini (createPartFromUri) or OpenAI (file_url).
+//   Groq cannot handle PDFs.
+// - Resolved PDF URLs route to Gemini (createPartFromUri) or OpenAI (file_url).
+//   Groq cannot handle PDFs.
+// - Stored PDFs route to Gemini (createPartFromBase64) or OpenAI (file_data).
+//   Groq cannot handle PDFs.
 //
 // Retry: All calls are wrapped with exponential backoff (3 attempts) to
 // handle transient 503/429 errors from model providers.
 import { AnalysisResponse } from '../types';
 import { analyzeResumeContent as geminiAnalyze, analyzeGoogleDrivePdf, analyzeStoredPdf, analyzeResolvedPdf } from './geminiService';
 import { analyzeResumeContent as groqAnalyze } from './groqService';
+import {
+  analyzeResumeContent as openaiAnalyze,
+  analyzeGoogleDrivePdf as openaiDrivePdf,
+  analyzeStoredPdf as openaiStoredPdf,
+  analyzeResolvedPdf as openaiResolvedPdf,
+} from './openaiService';
 
 /** Context for a PDF already stored in Supabase Storage. */
 export interface PdfContext {
@@ -54,7 +63,7 @@ const isRetryableError = (error: unknown): boolean => {
     // Request hung and was killed by withTimeout
     if (msg.includes('timed out')) return true;
   }
-  // Check for status code on error objects from SDKs (Groq, Google GenAI)
+  // Check for status code on error objects from SDKs (Groq, Google GenAI, OpenAI)
   const err = error as Record<string, unknown>;
   if (typeof err?.status === 'number' && (err.status === 503 || err.status === 429)) return true;
   if (typeof err?.code === 'number' && (err.code === 503 || err.code === 429)) return true;
@@ -93,16 +102,23 @@ export const analyzeResumeContent = async (
   pdfContext?: PdfContext,
   resolvedPdfContext?: ResolvedPdfContext
 ): Promise<AnalysisResponse> => {
-  // Google Drive PDFs → always Gemini (can read PDFs natively via createPartFromUri)
+  // Google Drive PDFs → Gemini or OpenAI (both can read PDFs server-side). Groq cannot.
   if (isGoogleDriveUrl(qrContent)) {
+    if (provider === 'openai') {
+      return withRetry(() => withTimeout(openaiDrivePdf(qrContent), REQUEST_TIMEOUT_MS));
+    }
     return withRetry(() => withTimeout(analyzeGoogleDrivePdf(qrContent), REQUEST_TIMEOUT_MS));
   }
 
-  // Resolved PDF URL available → Gemini fetches the PDF directly via createPartFromUri
+  // Resolved PDF URL available → Gemini (createPartFromUri) or OpenAI (file_url)
   // (e.g. Edge Function resolved Symplicity QR → S3 pre-signed URL)
   if (resolvedPdfContext) {
     if (provider === 'groq') {
       console.info('[aiService] Resolved PDF URL available but Groq cannot ingest PDFs. Using URL-based analysis.');
+    } else if (provider === 'openai') {
+      return withRetry(() =>
+        withTimeout(openaiResolvedPdf(resolvedPdfContext.resolvedPdfUrl, resolvedPdfContext.originalUrl), REQUEST_TIMEOUT_MS)
+      );
     } else {
       return withRetry(() =>
         withTimeout(analyzeResolvedPdf(resolvedPdfContext.resolvedPdfUrl, resolvedPdfContext.originalUrl), REQUEST_TIMEOUT_MS)
@@ -110,10 +126,14 @@ export const analyzeResumeContent = async (
     }
   }
 
-  // Stored PDF available → pass directly to Gemini via base64 (skips URL re-fetch)
+  // Stored PDF available → Gemini (base64) or OpenAI (file_data)
   if (pdfContext) {
     if (provider === 'groq') {
       console.info('[aiService] Stored PDF available but Groq cannot ingest PDFs. Using URL-based analysis.');
+    } else if (provider === 'openai') {
+      return withRetry(() =>
+        withTimeout(openaiStoredPdf(pdfContext.pdfBase64, pdfContext.originalUrl), REQUEST_TIMEOUT_MS)
+      );
     } else {
       return withRetry(() =>
         withTimeout(analyzeStoredPdf(pdfContext.pdfBase64, pdfContext.originalUrl), REQUEST_TIMEOUT_MS)
@@ -124,6 +144,9 @@ export const analyzeResumeContent = async (
   // Default: URL-based analysis
   if (provider === 'groq') {
     return withRetry(() => withTimeout(groqAnalyze(qrContent), REQUEST_TIMEOUT_MS));
+  }
+  if (provider === 'openai') {
+    return withRetry(() => withTimeout(openaiAnalyze(qrContent), REQUEST_TIMEOUT_MS));
   }
   return withRetry(() => withTimeout(geminiAnalyze(qrContent), REQUEST_TIMEOUT_MS));
 };
