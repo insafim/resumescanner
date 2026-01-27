@@ -48,7 +48,7 @@ const CandidateReview: React.FC<CandidateReviewProps> = ({
                   {formatCandidateNumber(candidate.candidate_number)}
                 </span>
               )}
-              <h2 className="text-2xl font-bold text-slate-900 leading-tight">{candidate.ai_analysis?.name || candidate.temp_name || candidate.name}</h2>
+              <h2 className="text-2xl font-bold text-slate-900 leading-tight">{candidate.ai_analysis?.name || 'Refer CV'}</h2>
             </div>
             <div className="flex items-center gap-2 mt-1">
               <span className="text-xs font-medium text-slate-400 bg-slate-100 px-2 py-0.5 rounded">

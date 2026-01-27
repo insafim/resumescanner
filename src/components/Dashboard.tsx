@@ -88,12 +88,11 @@ const Dashboard: React.FC<DashboardProps> = ({
                 <div className="flex justify-between items-start pl-2">
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
-                      {candidate.candidate_number != null && (
-                        <span className="text-xs font-bold text-brand-600 bg-brand-50 px-1.5 py-0.5 rounded shrink-0">
-                          #{String(candidate.candidate_number).padStart(3, '0')}
-                        </span>
-                      )}
-                      <h3 className="font-bold text-slate-900 truncate">{candidate.ai_analysis?.name || candidate.temp_name || candidate.name}</h3>
+                      <h3 className="font-bold text-slate-900 truncate">
+                        {candidate.candidate_number != null
+                          ? `Candidate #${String(candidate.candidate_number).padStart(3, '0')}`
+                          : 'Candidate'}
+                      </h3>
                       {candidate.analysis_status === 'processing' && (
                         <Loader2 size={14} className="text-blue-500 animate-spin shrink-0" />
                       )}
