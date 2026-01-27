@@ -179,12 +179,14 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Discard response body if we haven't already consumed it
-    if (finalResponse && !isPdf) {
-      await finalResponse.body?.cancel();
-    } else if (finalResponse && isPdf) {
-      // We don't download the PDF — Gemini will fetch it via createPartFromUri.
-      await finalResponse.body?.cancel();
+    // Discard response body if it hasn't already been consumed.
+    // When the text/html branch above calls finalResponse.text(), the body stream
+    // becomes locked. Attempting .cancel() on a locked stream throws
+    // "Cannot cancel a locked ReadableStream" — safe to ignore.
+    try {
+      await finalResponse?.body?.cancel();
+    } catch {
+      // Body already consumed (e.g., by .text() during HTML redirect extraction)
     }
 
     const finalContentType = finalResponse?.headers.get('content-type') || contentType;
