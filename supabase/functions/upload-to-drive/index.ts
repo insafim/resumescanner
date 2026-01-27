@@ -1,8 +1,8 @@
 // Supabase Edge Function: upload-to-drive
 // Downloads a PDF from a resolved URL and uploads it to a Google Drive folder
-// using a service account for authentication.
+// using OAuth 2.0 refresh token for authentication (personal Drive).
 //
-// Source: https://developers.google.com/identity/protocols/oauth2/service-account - Verified: 2026-01-27
+// Source: https://developers.google.com/identity/protocols/oauth2/web-server#httprest_3 - Verified: 2026-01-28
 // Source: https://developers.google.com/workspace/drive/api/guides/manage-uploads - Verified: 2026-01-27
 // Source: https://developers.google.com/workspace/drive/api/reference/rest/v3/files/create - Verified: 2026-01-27
 
@@ -11,97 +11,30 @@ import { corsHeaders } from '../_shared/cors.ts';
 const FETCH_TIMEOUT_MS = 30_000;
 const MAX_PDF_SIZE = 5 * 1024 * 1024; // 5 MB — Google Drive multipart upload limit
 
-// --- JWT helpers ---
+// --- OAuth 2.0 refresh token exchange ---
 
-// Source: https://developers.google.com/identity/protocols/oauth2/service-account#httprest
-// JWT must be signed with RS256 using the service account's PKCS#8 private key.
-
-function base64url(data: string | ArrayBuffer): string {
-  let base64: string;
-  if (typeof data === 'string') {
-    base64 = btoa(data);
-  } else {
-    const bytes = new Uint8Array(data);
-    let binary = '';
-    for (const byte of bytes) binary += String.fromCharCode(byte);
-    base64 = btoa(binary);
-  }
-  return base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-}
-
-/**
- * Import a PEM-encoded PKCS#8 private key for RS256 signing.
- * Google service account JSON always provides PKCS#8 format ("BEGIN PRIVATE KEY").
- */
-async function importPrivateKey(pem: string): Promise<CryptoKey> {
-  const pemContents = pem
-    .replace(/-----BEGIN PRIVATE KEY-----/g, '')
-    .replace(/-----END PRIVATE KEY-----/g, '')
-    .replace(/\s/g, '');
-
-  const binaryKey = Uint8Array.from(atob(pemContents), c => c.charCodeAt(0));
-
-  // Source: crypto.subtle.importKey with PKCS#8 for RSASSA-PKCS1-v1_5
-  // https://developer.mozilla.org/en-US/docs/Web/API/SubtleCrypto/importKey
-  return crypto.subtle.importKey(
-    'pkcs8',
-    binaryKey.buffer,
-    { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
-    false,
-    ['sign'],
-  );
-}
-
-/**
- * Create a signed JWT for Google service account authentication.
- * Source: https://developers.google.com/identity/protocols/oauth2/service-account#httprest
- */
-async function createSignedJwt(
-  serviceEmail: string,
-  privateKeyPem: string,
+// Source: https://developers.google.com/identity/protocols/oauth2/web-server#httprest_3
+// Exchange a stored refresh token for a short-lived access token.
+async function getAccessToken(
+  clientId: string,
+  clientSecret: string,
+  refreshToken: string,
 ): Promise<string> {
-  const cryptoKey = await importPrivateKey(privateKeyPem);
-
-  const header = base64url(JSON.stringify({ alg: 'RS256', typ: 'JWT' }));
-  const now = Math.floor(Date.now() / 1000);
-  const claims = base64url(
-    JSON.stringify({
-      iss: serviceEmail,
-      scope: 'https://www.googleapis.com/auth/drive.file',
-      aud: 'https://oauth2.googleapis.com/token',
-      exp: now + 3600,
-      iat: now,
-    }),
-  );
-
-  const unsignedToken = `${header}.${claims}`;
-  const encoder = new TextEncoder();
-  const signature = await crypto.subtle.sign(
-    'RSASSA-PKCS1-v1_5',
-    cryptoKey,
-    encoder.encode(unsignedToken),
-  );
-
-  return `${unsignedToken}.${base64url(signature)}`;
-}
-
-// --- Google OAuth2 token exchange ---
-
-async function getAccessToken(jwt: string): Promise<string> {
-  // Source: https://developers.google.com/identity/protocols/oauth2/service-account#httprest
   const response = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
-      grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
-      assertion: jwt,
+      grant_type: 'refresh_token',
+      client_id: clientId,
+      client_secret: clientSecret,
+      refresh_token: refreshToken,
     }),
   });
 
   if (!response.ok) {
     const errorBody = await response.text();
     throw new Error(
-      `Token exchange failed (${response.status}): ${errorBody}`,
+      `Token refresh failed (${response.status}): ${errorBody}`,
     );
   }
 
@@ -228,13 +161,14 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Read secrets
-    const serviceEmail = Deno.env.get('GOOGLE_SERVICE_ACCOUNT_EMAIL');
-    const rawPrivateKey = Deno.env.get('GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY');
+    // Read OAuth secrets
+    const clientId = Deno.env.get('GOOGLE_OAUTH_CLIENT_ID');
+    const clientSecret = Deno.env.get('GOOGLE_OAUTH_CLIENT_SECRET');
+    const refreshToken = Deno.env.get('GOOGLE_OAUTH_REFRESH_TOKEN');
     const folderId = Deno.env.get('GOOGLE_DRIVE_FOLDER_ID');
 
-    if (!serviceEmail || !rawPrivateKey || !folderId) {
-      console.error('[upload-to-drive] Missing secrets: check GOOGLE_SERVICE_ACCOUNT_EMAIL, GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY, GOOGLE_DRIVE_FOLDER_ID');
+    if (!clientId || !clientSecret || !refreshToken || !folderId) {
+      console.error('[upload-to-drive] Missing secrets: check GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET, GOOGLE_OAUTH_REFRESH_TOKEN, GOOGLE_DRIVE_FOLDER_ID');
       return new Response(
         JSON.stringify({ error: 'Google Drive integration not configured' }),
         {
@@ -244,23 +178,16 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Handle escaped newlines in private key from env vars
-    const privateKeyPem = rawPrivateKey.replace(/\\n/g, '\n');
+    // 1. Get access token via refresh token
+    console.log('[upload-to-drive] Refreshing access token...');
+    const accessToken = await getAccessToken(clientId, clientSecret, refreshToken);
 
-    // 1. Create signed JWT
-    console.log('[upload-to-drive] Creating JWT...');
-    const jwt = await createSignedJwt(serviceEmail, privateKeyPem);
-
-    // 2. Exchange for access token
-    console.log('[upload-to-drive] Exchanging JWT for access token...');
-    const accessToken = await getAccessToken(jwt);
-
-    // 3. Download PDF from resolved URL
+    // 2. Download PDF from resolved URL
     console.log('[upload-to-drive] Downloading PDF from:', resolvedUrl);
     const pdfBytes = await downloadPdf(resolvedUrl);
     console.log(`[upload-to-drive] Downloaded ${pdfBytes.byteLength} bytes`);
 
-    // 4. Upload to Google Drive
+    // 3. Upload to Google Drive
     const safeName = (candidateName || 'Unknown')
       .replace(/[^a-zA-Z0-9_\- ]/g, '_')
       .slice(0, 80);
