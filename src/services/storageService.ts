@@ -1,5 +1,8 @@
 import { supabase } from './supabaseClient';
 import { Candidate, AnalysisResponse } from '../types';
+import { DEFAULT_CANDIDATE_NAME } from '../constants';
+import { deriveTempName } from '../utils/deriveTempName';
+import { detectSourceType } from '../utils/detectSource';
 
 // Source: https://supabase.com/docs/reference/javascript/select - Verified: 2026-01-27
 
@@ -65,6 +68,18 @@ export const insertScan = async (qrContent: string): Promise<InsertScanResult | 
     return { candidate: existing[0] as Candidate, isDuplicate: true };
   }
 
+  const tempName = deriveTempName(qrContent);
+  const sourceType = detectSourceType(qrContent);
+
+  // Assign next sequential candidate number
+  const { data: maxRow } = await supabase
+    .from('candidates')
+    .select('candidate_number')
+    .order('candidate_number', { ascending: false, nullsFirst: false })
+    .limit(1)
+    .maybeSingle();
+  const nextNumber = ((maxRow?.candidate_number as number | null) ?? 0) + 1;
+
   const { data, error } = await supabase
     .from('candidates')
     .insert({
@@ -73,7 +88,11 @@ export const insertScan = async (qrContent: string): Promise<InsertScanResult | 
       status: 'pending',
       notes: '',
       analysis_status: 'processing',
-      name: 'Unknown Candidate',
+      name: tempName,
+      temp_name: tempName,
+      source_type: sourceType,
+      pipeline_step: 'name_derived',
+      candidate_number: nextNumber,
     })
     .select()
     .single();
@@ -94,8 +113,9 @@ export const updateAnalysis = async (
     .from('candidates')
     .update({
       ai_analysis: analysis,
-      name: analysis.name || 'Unknown Candidate',
+      name: analysis.name || DEFAULT_CANDIDATE_NAME,
       analysis_status: 'complete',
+      pipeline_step: 'complete',
       updated_at: new Date().toISOString(),
     })
     .eq('id', id)
@@ -116,6 +136,38 @@ export const markAnalysisFailed = async (id: string, errorMsg: string): Promise<
     .update({
       analysis_status: 'failed',
       analysis_error: errorMsg,
+      pipeline_step: 'failed',
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', id);
+};
+
+// Persist URL resolution results (Phase 2: after Edge Function resolves redirects)
+export const updateResolvedUrl = async (
+  id: string,
+  resolvedUrl: string,
+  pdfStoragePath: string | null
+): Promise<void> => {
+  await supabase
+    .from('candidates')
+    .update({
+      resolved_url: resolvedUrl,
+      pdf_storage_path: pdfStoragePath,
+      pipeline_step: 'url_resolved',
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', id);
+};
+
+// Update pipeline step independently (allows tracking progress without touching other fields)
+export const updatePipelineStep = async (
+  id: string,
+  step: NonNullable<Candidate['pipeline_step']>
+): Promise<void> => {
+  await supabase
+    .from('candidates')
+    .update({
+      pipeline_step: step,
       updated_at: new Date().toISOString(),
     })
     .eq('id', id);

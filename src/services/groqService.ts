@@ -6,28 +6,10 @@
 // For raw text (non-URL), step 1 is skipped.
 import Groq from "groq-sdk";
 import { AnalysisResponse } from '../types';
+import { detectSourceType, sourceHints } from '../utils/detectSource';
+import { AI_MODELS } from '../constants';
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY, dangerouslyAllowBrowser: true });
-
-// Detect URL type to tailor the prompt
-const detectSourceType = (content: string): string => {
-  if (!content.startsWith('http')) return 'raw_text';
-  const lower = content.toLowerCase();
-  if (lower.includes('github.com')) return 'github';
-  if (lower.includes('linkedin.com/in')) return 'linkedin';
-  if (lower.includes('drive.google.com')) return 'google_drive';
-  if (lower.endsWith('.pdf')) return 'pdf';
-  return 'portfolio';
-};
-
-const sourceHints: Record<string, string> = {
-  github: "This is a GitHub profile. Look at their repositories, contributions, pinned projects, and bio to assess technical ability.",
-  linkedin: "This is a LinkedIn profile. Extract their headline, work history, education, and skills.",
-  google_drive: "This links to a Google Drive document (likely a resume PDF). If accessible, extract the resume content.",
-  pdf: "This links to a PDF resume. If accessible, extract the resume content.",
-  portfolio: "This is a personal website or portfolio. Look for About, Projects, Resume, and Contact sections.",
-  raw_text: "This is raw text from a QR code, likely resume content or contact info. Parse it directly.",
-};
 
 const jsonSchema = `{
   "name": "string (Full name, use 'Unknown Candidate' only if truly not findable)",
@@ -50,7 +32,7 @@ const jsonSchema = `{
 // Step 1: Use groq/compound to fetch and analyze URL content
 const fetchWithCompound = async (qrContent: string, sourceType: string): Promise<string> => {
   const response = await groq.chat.completions.create({
-    model: "groq/compound",
+    model: AI_MODELS.GROQ_COMPOUND,
     messages: [
       {
         role: "system",
@@ -88,7 +70,7 @@ ${jsonSchema}
 Return ONLY the JSON object, no additional text.`;
 
   const response = await groq.chat.completions.create({
-    model: "llama-3.3-70b-versatile",
+    model: AI_MODELS.GROQ_STRUCTURED,
     messages: [
       {
         role: "system",
