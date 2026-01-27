@@ -9,7 +9,7 @@ interface HeaderProps {
 
 const Header: React.FC<HeaderProps> = ({ view, onBack }) => {
   return (
-    <header className="bg-white border-b border-slate-200 sticky top-0 z-20 px-4 py-3 flex items-center justify-between">
+    <header className="bg-white border-b border-slate-200 sticky top-0 z-20 px-4 py-5 flex items-center justify-between">
       {view === ViewState.DASHBOARD ? (
         <div>
           <h1 className="text-xl font-bold text-slate-900 tracking-tight">ResumeScanner</h1>
@@ -18,7 +18,7 @@ const Header: React.FC<HeaderProps> = ({ view, onBack }) => {
       ) : (
         <button
           onClick={onBack}
-          className="flex items-center text-slate-600 hover:text-brand-600 transition-colors"
+          className="flex items-center text-slate-600 hover:text-brand-600 transition-colors py-2 -my-2"
         >
           <ArrowLeft size={20} className="mr-1" />
           <span className="font-medium">Back</span>
