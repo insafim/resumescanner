@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-05-01
+
 ### Added
 - OpenAI as a third AI provider alongside Gemini and Groq
 - Google Drive PDF archival via OAuth refresh-token (`upload-to-drive` Edge Function)
@@ -29,4 +31,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 - Added OAuth client-secret JSON pattern to `.gitignore`
 
-[Unreleased]: https://github.com/insafxads/resumescanner/compare/HEAD...HEAD
+[Unreleased]: https://github.com/insafim/resumescanner/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/insafim/resumescanner/releases/tag/v0.1.0
